@@ -1,0 +1,108 @@
+#!/bin/bash
+
+# Backup book stack in line with this process: https://www.bookstackapp.com/docs/admin/backup-restore/
+echo "Backing up bookstack to /root/bookstack.backup.sql"
+echo ""
+sudo mysqldump -u root bookstack > /root/bookstack.backup.sql
+
+echo "This script uninstalls the BookStack instance from the server."
+echo ""
+
+# Get the current user running the script
+SCRIPT_USER="${SUDO_USER:-$USER}"
+
+# The directory where BookStack is installed
+BOOKSTACK_DIR="/var/www/bookstack"
+
+# Log path for uninstallation
+LOGPATH=$(realpath "bookstack_uninstall_$(date +%s).log")
+
+# Echo out an error message to the command line and exit the program
+# Also logs the message to the log file
+function error_out() {
+  echo "ERROR: $1" | tee -a "$LOGPATH" 1>&2
+  exit 1
+}
+
+# Echo out an information message to both the command line and log file
+function info_msg() {
+  echo "$1" | tee -a "$LOGPATH"
+}
+
+# Check if the script is run as root
+function check_root() {
+  if [[ $EUID -gt 0 ]]
+  then
+    error_out "This script must be run with root/sudo privileges"
+  fi
+}
+
+# Stop apache server
+function stop_apache() {
+  info_msg "Stopping Apache server..."
+  systemctl stop apache2 >> "$LOGPATH" 2>&1
+}
+
+# Remove BookStack database and user
+function remove_database() {
+  info_msg "Removing BookStack database and user..."
+  mysql -u root --execute="DROP DATABASE bookstack;" >> "$LOGPATH" 2>&1
+  mysql -u root --execute="DROP USER 'bookstack'@'localhost';" >> "$LOGPATH" 2>&1
+  mysql -u root --execute="FLUSH PRIVILEGES;" >> "$LOGPATH" 2>&1
+}
+
+# Remove BookStack files
+function remove_files() {
+  info_msg "Removing BookStack files..."
+  rm -rf "$BOOKSTACK_DIR" >> "$LOGPATH" 2>&1
+}
+
+# Disable and remove Apache configuration
+function remove_apache_config() {
+  info_msg "Removing Apache configuration..."
+  a2dissite bookstack.conf >> "$LOGPATH" 2>&1
+  rm /etc/apache2/sites-available/bookstack.conf >> "$LOGPATH" 2>&1
+  systemctl restart apache2 >> "$LOGPATH" 2>&1
+}
+
+# Remove PHP dependencies and Composer
+function remove_composer() {
+  info_msg "Removing Composer and PHP dependencies..."
+  rm /usr/local/bin/composer >> "$LOGPATH" 2>&1
+}
+
+# Uninstall system packages
+function uninstall_packages() {
+  info_msg "Uninstalling system packages..."
+  apt remove --purge -y git unzip apache2 php8.1 curl php8.1-curl php8.1-mbstring php8.1-ldap \
+  php8.1-xml php8.1-zip php8.1-gd php8.1-mysql mysql-server-8.0 libapache2-mod-php8.1 >> "$LOGPATH" 2>&1
+  apt autoremove -y >> "$LOGPATH" 2>&1
+  apt autoclean >> "$LOGPATH" 2>&1
+}
+
+info_msg "This script logs full output to $LOGPATH which may help upon issues."
+sleep 1
+
+check_root
+info_msg "Stopping Apache server..."
+stop_apache
+
+info_msg "Removing BookStack database and user..."
+remove_database
+
+info_msg "Removing BookStack files..."
+remove_files
+
+info_msg "Removing Apache configuration..."
+remove_apache_config
+
+info_msg "Removing Composer and PHP dependencies..."
+remove_composer
+
+info_msg "Uninstalling system packages..."
+uninstall_packages
+
+info_msg "----------------------------------------------------------------"
+info_msg "Uninstallation finished, your BookStack instance should now be completely removed!"
+info_msg "- Uninstall script log: $LOGPATH"
+info_msg "---------------------------------------------------------------"
