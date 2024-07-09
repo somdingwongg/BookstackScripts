@@ -1,10 +1,5 @@
 #!/bin/bash
 
-# Backup book stack in line with this process: https://www.bookstackapp.com/docs/admin/backup-restore/
-echo "Backing up bookstack to /root/bookstack.backup.sql"
-echo ""
-sudo mysqldump -u root bookstack > /root/bookstack.backup.sql
-
 echo "This script uninstalls the BookStack instance from the server."
 echo ""
 
@@ -36,6 +31,11 @@ function check_root() {
     error_out "This script must be run with root/sudo privileges"
   fi
 }
+
+# Backup book stack in line with this process: https://www.bookstackapp.com/docs/admin/backup-restore/
+echo "Backing up bookstack to /root/bookstack.backup.sql"
+echo ""
+sudo mysqldump -u root bookstack > /root/bookstack.backup.sql
 
 # Stop apache server
 function stop_apache() {
